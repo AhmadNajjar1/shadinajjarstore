@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shadi Najjar Store — Receipts</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f4f4f4; color: #111; padding: 20px; }
+  h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #666; margin-bottom: 20px; }
+  .counter-bar { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+  .counter-bar span { font-size: 13px; color: #555; }
+  .counter-bar strong { font-size: 18px; color: #111; }
+  .counter-right { display: flex; align-items: center; gap: 10px; }
+  .reset-btn { font-size: 12px; color: #999; background: none; border: 1px solid #ddd; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .reset-btn:hover { color: #c00; border-color: #c00; }
+  .sync-status { font-size: 11px; padding: 3px 8px; border-radius: 5px; }
+  .sync-ok { background: #e6f4ea; color: #2d7a3a; }
+  .sync-err { background: #fce8e6; color: #c5221f; }
+  .sync-loading { background: #fff3e0; color: #b45309; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  .card-title { font-size: 12px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .row.full { grid-template-columns: 1fr; }
+  .field label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+  .field input, .field textarea {
+    width: 100%; padding: 8px 10px; font-size: 13px;
+    border: 1px solid #ccc; border-radius: 7px;
+    background: #fafafa; color: #111; font-family: Arial, sans-serif;
+    outline: none;
+  }
+  .field input:focus, .field textarea:focus { border-color: #555; background: #fff; }
+  .field textarea { resize: vertical; min-height: 65px; }
+
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .print-btn {
+    width: 100%; padding: 13px; font-size: 14px; font-weight: 700;
+    border: none; border-radius: 10px;
+    cursor: pointer; letter-spacing: 0.02em;
+  }
+  .print-btn:disabled { background: #999 !important; color: #fff !important; cursor: not-allowed; }
+  .btn-label { background: #111; color: #fff; }
+  .btn-label:hover:not(:disabled) { background: #333; }
+  .btn-receipt { background: #fff; color: #111; border: 1.5px solid #111 !important; }
+  .btn-receipt:hover:not(:disabled) { background: #f0f0f0; }
+
+  .note { font-size: 12px; color: #888; text-align: center; margin-bottom: 16px; }
+
+  @media print {
+    body > * { display: none !important; }
+    #print-area { display: block !important; }
+    @page { margin: 0; size: 58mm auto; }
+  }
+
+  #print-area { display: none; }
+
+  .label-sticker {
+    width: 52mm;
+    margin: 0 auto;
+    font-family: 'Courier New', Courier, monospace;
+    color: #000;
+    background: #fff;
+    padding: 3mm;
+    border: 2px solid #000;
+  }
+  .label-sticker .s-title {
+    font-size: 8pt; font-weight: bold; text-align: center;
+    border-bottom: 1px dashed #000;
+    padding-bottom: 1.5mm; margin-bottom: 1.5mm; letter-spacing: 1px;
+  }
+  .label-sticker .s-num {
+    font-size: 20pt; font-weight: bold; text-align: center;
+    letter-spacing: 4px; margin: 1mm 0;
+  }
+  .label-sticker .s-row { font-size: 8pt; margin-top: 1mm; }
+  .label-sticker .s-lbl { font-size: 7pt; color: #555; }
+
+  .receipt {
+    width: 52mm; margin: 0 auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 8.5pt; line-height: 1.45;
+    color: #000; background: #fff; padding: 4mm 3mm;
+  }
+  .r-name { font-size: 11pt; font-weight: bold; text-align: center; letter-spacing: 1px; }
+  .r-address { font-size: 7.5pt; text-align: center; color: #333; }
+  .r-dash { border: none; border-top: 1px dashed #000; margin: 2.5mm 0; }
+  .r-num-box { border: 1.5px solid #000; text-align: center; font-size: 14pt; font-weight: bold; letter-spacing: 4px; padding: 2mm 0; margin: 1mm 0; }
+  .r-date { font-size: 7.5pt; text-align: center; color: #444; }
+  .r-lbl { font-size: 7pt; color: #555; margin-top: 1.5mm; }
+  .r-val { font-size: 8.5pt; font-weight: bold; }
+  .r-val-sm { font-size: 8pt; }
+  .r-arabic { direction: rtl; text-align: right; font-family: Arial, sans-serif; font-size: 7.5pt; line-height: 1.7; color: #111; }
+  .r-copy-label { text-align: center; font-size: 7pt; color: #666; margin-top: 1mm; font-family: Arial, sans-serif; }
+</style>
+</head>
+<body>
+
+<h1>Shadi Najjar Store</h1>
+<p class="subtitle">Receipt Generator — Thermal 58mm</p>
+
+<div class="counter-bar">
+  <div>
+    <span>Next receipt number: </span>
+    <strong id="display-num">...</strong>
+  </div>
+  <div class="counter-right">
+    <span class="sync-status sync-loading" id="sync-status">Connecting...</span>
+    <button class="reset-btn" onclick="resetCounter()">Reset counter</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Customer info</div>
+  <div class="row">
+    <div class="field"><label>Customer name</label><input id="f-name" type="text" placeholder="e.g. Ahmad Khalil"></div>
+    <div class="field"><label>Phone number</label><input id="f-phone" type="text" placeholder="e.g. 03-123456"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Device details</div>
+  <div class="row">
+    <div class="field"><label>Brand</label><input id="f-brand" type="text" placeholder="e.g. Samsung"></div>
+    <div class="field"><label>Model</label><input id="f-model" type="text" placeholder="e.g. Galaxy S22"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Color / condition</label><input id="f-color" type="text" placeholder="e.g. Black, cracked screen"></div>
+    <div class="field"><label>IMEI / Serial (optional)</label><input id="f-imei" type="text" placeholder=""></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Repair details</div>
+  <div class="row full">
+    <div class="field"><label>Problem description</label><textarea id="f-problem" placeholder="e.g. Screen not working, battery drains fast..."></textarea></div>
+  </div>
+  <div class="row full">
+    <div class="field"><label>Added items / accessories received</label><input id="f-items" type="text" placeholder="e.g. Charger, case — or leave blank"></div>
+  </div>
+</div>
+
+<div class="btn-row">
+  <button class="print-btn btn-label" id="btn-label" onclick="printLabel()" disabled>🏷 Print sticky label</button>
+  <button class="print-btn btn-receipt" id="btn-receipt" onclick="printReceipt()" disabled>🧾 Print customer receipt</button>
+</div>
+<p class="note">Print sticky label first (saves the receipt number) — then print customer receipt</p>
+
+<div id="print-area"></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyA9stOV8fyLiJwECjVfF5SqDdg_ppeu1Gw",
+    authDomain: "shadi-receipts.firebaseapp.com",
+    projectId: "shadi-receipts",
+    storageBucket: "shadi-receipts.firebasestorage.app",
+    messagingSenderId: "180848858539",
+    appId: "1:180848858539:web:a6e277baf34f09c263aeee"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const counterRef = doc(db, "store", "counter");
+
+  let currentNum = null;
+
+  async function loadCounter() {
+    try {
+      const snap = await getDoc(counterRef);
+      const val = snap.exists() ? snap.data().value : 0;
+      updateDisplay(val + 1);
+      document.getElementById('sync-status').textContent = '✓ Connected';
+      document.getElementById('sync-status').className = 'sync-status sync-ok';
+      document.getElementById('btn-label').disabled = false;
+      document.getElementById('btn-receipt').disabled = false;
+    } catch(e) {
+      document.getElementById('sync-status').textContent = '✗ Offline';
+      document.getElementById('sync-status').className = 'sync-status sync-err';
+      document.getElementById('display-num').textContent = 'ERR';
+    }
+  }
+
+  function updateDisplay(n) {
+    document.getElementById('display-num').textContent = String(n).padStart(6, '0');
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function getDateTime() {
+    const now = new Date();
+    const h = now.getHours();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return pad(now.getDate())+'/'+pad(now.getMonth()+1)+'/'+now.getFullYear()
+      +' — '+pad(h12)+':'+pad(now.getMinutes())+' '+ampm;
+  }
+
+  function buildStickyLabel(num) {
+    const name  = document.getElementById('f-name').value.trim() || '—';
+    const phone = document.getElementById('f-phone').value.trim() || '—';
+    return `
+      <div class="label-sticker">
+        <div class="s-title">SHADI NAJJAR STORE</div>
+        <div class="s-num">${num}</div>
+        <div class="s-lbl">Customer</div>
+        <div class="s-row">${name}</div>
+        <div class="s-lbl" style="margin-top:1.5mm;">Phone</div>
+        <div class="s-row">${phone}</div>
+      </div>
+    `;
+  }
+
+  function buildCustomerReceipt(num) {
+    const name    = document.getElementById('f-name').value.trim() || '—';
+    const phone   = document.getElementById('f-phone').value.trim() || '—';
+    const brand   = document.getElementById('f-brand').value.trim() || '—';
+    const model   = document.getElementById('f-model').value.trim() || '—';
+    const color   = document.getElementById('f-color').value.trim() || '—';
+    const imei    = document.getElementById('f-imei').value.trim();
+    const problem = document.getElementById('f-problem').value.trim() || '—';
+    const items   = document.getElementById('f-items').value.trim() || '—';
+    const dt      = getDateTime();
+    return `
+      <div class="receipt">
+        <div class="r-name">Shadi Najjar Store</div>
+        <div class="r-address">Barbir — Behind Blom Bank</div>
+        <div class="r-address">WhatsApp: 76-630620</div>
+        <hr class="r-dash">
+        <div class="r-num-box">${num}</div>
+        <div class="r-date">${dt}</div>
+        <hr class="r-dash">
+        <div class="r-lbl">Customer</div>
+        <div class="r-val">${name}</div>
+        <div class="r-val-sm">${phone}</div>
+        <hr class="r-dash">
+        <div class="r-lbl">Device</div>
+        <div class="r-val">${brand} ${model}</div>
+        <div class="r-val-sm">${color}</div>
+        ${imei ? `<div class="r-val-sm" style="font-size:7.5pt;">IMEI/S/N: ${imei}</div>` : ''}
+        <hr class="r-dash">
+        <div class="r-lbl">Problem</div>
+        <div class="r-val-sm">${problem}</div>
+        <div class="r-lbl" style="margin-top:2mm;">Items received</div>
+        <div class="r-val-sm">${items}</div>
+        <hr class="r-dash">
+        <div class="r-arabic">
+          ⚠ القطعة تتلف بعد شهر من تاريخ إخباركم.<br>
+          للاستلام يجب إحضار الوصل الأصلي،<br>
+          ولا نقبل صورة الوصل.
+        </div>
+        <hr class="r-dash">
+        <div class="r-copy-label">نسخة الزبون — Customer copy</div>
+      </div>
+    `;
+  }
+
+  window.printLabel = async function() {
+    const btn = document.getElementById('btn-label');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+      let newCounter;
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(counterRef);
+        newCounter = (snap.exists() ? snap.data().value : 0) + 1;
+        transaction.set(counterRef, { value: newCounter });
+      });
+
+      currentNum = String(newCounter).padStart(6, '0');
+      updateDisplay(newCounter + 1);
+
+      document.getElementById('print-area').innerHTML = buildStickyLabel(currentNum);
+      setTimeout(() => window.print(), 300);
+    } catch(e) {
+      alert('Could not save — check your internet connection.');
+    }
+
+    btn.disabled = false;
+    btn.textContent = '🏷 Print sticky label';
+  };
+
+  window.printReceipt = function() {
+    if (!currentNum) {
+      alert('Print the sticky label first — it generates the receipt number.');
+      return;
+    }
+    document.getElementById('print-area').innerHTML = buildCustomerReceipt(currentNum);
+    setTimeout(() => window.print(), 300);
+  };
+
+  window.resetCounter = async function() {
+    if (!confirm('Reset receipt counter back to 000001?')) return;
+    try {
+      await setDoc(counterRef, { value: 0 });
+      currentNum = null;
+      updateDisplay(1);
+      alert('Counter reset to 000001.');
+    } catch(e) {
+      alert('Could not reset — check your internet connection.');
+    }
+  };
+
+  loadCounter();
+</script>
+</body>
+</html>
