@@ -50,7 +50,7 @@
   @media print {
     body > * { display: none !important; }
     #print-area { display: block !important; }
-    @page { margin: 0; size: 58mm auto; }
+    
   }
 
   #print-area { display: none; }
@@ -93,6 +93,7 @@
   .r-arabic { direction: rtl; text-align: right; font-family: Arial, sans-serif; font-size: 7.5pt; line-height: 1.7; color: #111; }
   .r-copy-label { text-align: center; font-size: 7pt; color: #666; margin-top: 1mm; font-family: Arial, sans-serif; }
 </style>
+<style id="print-style"></style>
 </head>
 <body>
 
@@ -272,6 +273,7 @@
       currentNum = String(newCounter).padStart(6, '0');
       updateDisplay(newCounter + 1);
 
+      document.getElementById('print-style').textContent = '@page{size:58mm auto;margin:0}';
       document.getElementById('print-area').innerHTML = buildStickyLabel(currentNum);
       setTimeout(() => window.print(), 300);
     } catch(e) {
@@ -287,6 +289,7 @@
       alert('Print the sticky label first — it generates the receipt number.');
       return;
     }
+    document.getElementById('print-style').textContent = '@page{size:72mm auto;margin:0}';
     document.getElementById('print-area').innerHTML = buildCustomerReceipt(currentNum);
     setTimeout(() => window.print(), 300);
   };
