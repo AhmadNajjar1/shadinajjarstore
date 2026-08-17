@@ -33,17 +33,15 @@
   .field input:focus, .field textarea:focus { border-color: #555; background: #fff; }
   .field textarea { resize: vertical; min-height: 65px; }
 
-  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .btn-row { margin-bottom: 12px; }
   .print-btn {
     width: 100%; padding: 13px; font-size: 18px; font-weight: 700;
     border: none; border-radius: 10px;
     cursor: pointer; letter-spacing: 0.02em;
   }
   .print-btn:disabled { background: #999 !important; color: #fff !important; cursor: not-allowed; }
-  .btn-label { background: #111; color: #fff; }
-  .btn-label:hover:not(:disabled) { background: #333; }
-  .btn-receipt { background: #fff; color: #111; border: 1.5px solid #111 !important; }
-  .btn-receipt:hover:not(:disabled) { background: #f0f0f0; }
+  .btn-receipt { background: #111; color: #fff; }
+  .btn-receipt:hover:not(:disabled) { background: #333; }
 
   .note { font-size: 16px; color: #888; text-align: center; margin-bottom: 16px; }
 
@@ -54,27 +52,6 @@
   }
 
   #print-area { display: none; }
-
-  .label-sticker {
-    width: 52mm;
-    margin: 0 auto;
-    font-family: 'Courier New', Courier, monospace;
-    color: #000;
-    background: #fff;
-    padding: 3mm;
-    border: 2px solid #000;
-  }
-  .label-sticker .s-title {
-    font-size: 8pt; font-weight: bold; text-align: center;
-    border-bottom: 1px dashed #000;
-    padding-bottom: 1.5mm; margin-bottom: 1.5mm; letter-spacing: 1px;
-  }
-  .label-sticker .s-num {
-    font-size: 20pt; font-weight: bold; text-align: center;
-    letter-spacing: 4px; margin: 1mm 0;
-  }
-  .label-sticker .s-row { font-size: 8pt; margin-top: 1mm; }
-  .label-sticker .s-lbl { font-size: 7pt; color: #555; }
 
   .receipt {
     width: 52mm; margin: 0 auto;
@@ -98,7 +75,7 @@
 <body>
 
 <h1>Shadi Najjar Store</h1>
-<p class="subtitle">Receipt Generator — Thermal 58mm</p>
+<p class="subtitle">Receipt Generator — Thermal 72mm</p>
 
 <div class="counter-bar">
   <div>
@@ -142,10 +119,9 @@
 </div>
 
 <div class="btn-row">
-  <button class="print-btn btn-label" id="btn-label" onclick="printLabel()" disabled>🏷 Print sticky label</button>
-  <button class="print-btn btn-receipt" id="btn-receipt" onclick="printReceipt()" disabled>🧾 Print customer receipt</button>
+  <button class="print-btn btn-receipt" id="btn-receipt" onclick="printBoth()" disabled>🧾 Print receipts (customer + employee)</button>
 </div>
-<p class="note">Print sticky label first (saves the receipt number) — then print customer receipt</p>
+<p class="note">Prints the customer copy first — once it's done, tear it off and the employee copy prints automatically. Tear that off too.</p>
 
 <div id="print-area"></div>
 
@@ -175,7 +151,6 @@
       updateDisplay(val + 1);
       document.getElementById('sync-status').textContent = '✓ Connected';
       document.getElementById('sync-status').className = 'sync-status sync-ok';
-      document.getElementById('btn-label').disabled = false;
       document.getElementById('btn-receipt').disabled = false;
     } catch(e) {
       document.getElementById('sync-status').textContent = '✗ Offline';
@@ -198,22 +173,7 @@
       +' — '+pad(h12)+':'+pad(now.getMinutes())+' '+ampm;
   }
 
-  function buildStickyLabel(num) {
-    const name  = document.getElementById('f-name').value.trim() || '—';
-    const phone = document.getElementById('f-phone').value.trim() || '—';
-    return `
-      <div class="label-sticker">
-        <div class="s-title">SHADI NAJJAR STORE</div>
-        <div class="s-num">${num}</div>
-        <div class="s-lbl">Customer</div>
-        <div class="s-row">${name}</div>
-        <div class="s-lbl" style="margin-top:1.5mm;">Phone</div>
-        <div class="s-row">${phone}</div>
-      </div>
-    `;
-  }
-
-  function buildCustomerReceipt(num) {
+  function buildReceipt(num, copyLabelAr, copyLabelEn) {
     const name    = document.getElementById('f-name').value.trim() || '—';
     const phone   = document.getElementById('f-phone').value.trim() || '—';
     const brand   = document.getElementById('f-brand').value.trim() || '—';
@@ -252,45 +212,52 @@
           ولا نقبل صورة الوصل.
         </div>
         <hr class="r-dash">
-        <div class="r-copy-label">نسخة الزبون — Customer copy</div>
+        <div class="r-copy-label">${copyLabelAr} — ${copyLabelEn}</div>
       </div>
     `;
   }
 
-  window.printLabel = async function() {
-    const btn = document.getElementById('btn-label');
+  // Prints the customer copy, then automatically prints the employee copy
+  // right after — same 72mm paper, same printer. Tear off between each.
+  window.printBoth = async function() {
+    const btn = document.getElementById('btn-receipt');
     btn.disabled = true;
     btn.textContent = 'Saving...';
 
+    let newCounter;
     try {
-      let newCounter;
       await runTransaction(db, async (transaction) => {
         const snap = await transaction.get(counterRef);
         newCounter = (snap.exists() ? snap.data().value : 0) + 1;
         transaction.set(counterRef, { value: newCounter });
       });
-
-      currentNum = String(newCounter).padStart(6, '0');
-      updateDisplay(newCounter + 1);
-
-      document.getElementById('print-style').textContent = '@page{size:58mm auto;margin:0}';
-      document.getElementById('print-area').innerHTML = buildStickyLabel(currentNum);
-      setTimeout(() => window.print(), 300);
     } catch(e) {
       alert('Could not save — check your internet connection.');
-    }
-
-    btn.disabled = false;
-    btn.textContent = '🏷 Print sticky label';
-  };
-
-  window.printReceipt = function() {
-    if (!currentNum) {
-      alert('Print the sticky label first — it generates the receipt number.');
+      btn.disabled = false;
+      btn.textContent = '🧾 Print receipts (customer + employee)';
       return;
     }
+
+    currentNum = String(newCounter).padStart(6, '0');
+    updateDisplay(newCounter + 1);
     document.getElementById('print-style').textContent = '@page{size:72mm auto;margin:0}';
-    document.getElementById('print-area').innerHTML = buildCustomerReceipt(currentNum);
+
+    btn.textContent = 'Printing customer copy...';
+
+    const printEmployeeCopy = function() {
+      btn.textContent = 'Printing employee copy...';
+      document.getElementById('print-area').innerHTML = buildReceipt(currentNum, 'نسخة الموظف', 'Employee copy');
+      setTimeout(() => window.print(), 300);
+      window.addEventListener('afterprint', finish, { once: true });
+    };
+
+    const finish = function() {
+      btn.disabled = false;
+      btn.textContent = '🧾 Print receipts (customer + employee)';
+    };
+
+    window.addEventListener('afterprint', printEmployeeCopy, { once: true });
+    document.getElementById('print-area').innerHTML = buildReceipt(currentNum, 'نسخة الزبون', 'Customer copy');
     setTimeout(() => window.print(), 300);
   };
 
