@@ -13,8 +13,8 @@
   .counter-bar span { font-size: 17px; color: #555; }
   .counter-bar strong { font-size: 22px; color: #111; }
   .counter-right { display: flex; align-items: center; gap: 10px; }
-  .reset-btn { font-size: 16px; color: #999; background: none; border: 1px solid #ddd; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-  .reset-btn:hover { color: #c00; border-color: #c00; }
+  .history-btn { font-size: 16px; color: #333; background: none; border: 1px solid #ddd; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .history-btn:hover { color: #111; border-color: #999; }
   .sync-status { font-size: 15px; padding: 3px 8px; border-radius: 5px; }
   .sync-ok { background: #e6f4ea; color: #2d7a3a; }
   .sync-err { background: #fce8e6; color: #c5221f; }
@@ -69,6 +69,33 @@
   .r-val-sm { font-size: 8pt; }
   .r-arabic { direction: rtl; text-align: right; font-family: Arial, sans-serif; font-size: 7.5pt; line-height: 1.7; color: #111; }
   .r-copy-label { text-align: center; font-size: 7pt; color: #666; margin-top: 1mm; font-family: Arial, sans-serif; }
+
+  .history-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: none; align-items: flex-start; justify-content: center;
+    padding: 40px 16px; z-index: 1000;
+  }
+  .history-overlay.open { display: flex; }
+  .history-panel {
+    background: #fff; border-radius: 12px; max-width: 640px; width: 100%;
+    max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .history-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #eee; }
+  .history-head strong { font-size: 18px; }
+  .history-close { background: none; border: none; font-size: 24px; line-height: 1; color: #888; cursor: pointer; }
+  .history-close:hover { color: #111; }
+  .history-search { padding: 12px 16px; border-bottom: 1px solid #eee; }
+  .history-search input {
+    width: 100%; padding: 8px 10px; font-size: 17px;
+    border: 1px solid #ccc; border-radius: 7px; background: #fafafa; color: #111;
+  }
+  .history-list { overflow-y: auto; padding: 6px 16px 16px; }
+  .history-row { padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+  .history-row:last-child { border-bottom: none; }
+  .history-row .h-top { display: flex; justify-content: space-between; font-size: 16px; font-weight: 700; }
+  .history-row .h-meta { font-size: 14px; color: #666; margin-top: 2px; }
+  .history-row .h-problem { font-size: 14px; color: #444; margin-top: 2px; }
+  .history-empty { text-align: center; color: #888; padding: 30px 0; font-size: 16px; }
 </style>
 <style id="print-style"></style>
 </head>
@@ -84,7 +111,7 @@
   </div>
   <div class="counter-right">
     <span class="sync-status sync-loading" id="sync-status">Connecting...</span>
-    <button class="reset-btn" onclick="resetCounter()">Reset counter</button>
+    <button class="history-btn" onclick="openHistory()">🕘 History</button>
   </div>
 </div>
 
@@ -125,9 +152,27 @@
 
 <div id="print-area"></div>
 
+<div class="history-overlay" id="history-overlay">
+  <div class="history-panel">
+    <div class="history-head">
+      <strong>Past receipts</strong>
+      <button class="history-close" onclick="closeHistory()">&times;</button>
+    </div>
+    <div class="history-search">
+      <input id="history-search-input" type="text" placeholder="Search by name, phone, or receipt #" oninput="filterHistory()">
+    </div>
+    <div class="history-list" id="history-list">
+      <div class="history-empty">Loading...</div>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import {
+    getFirestore, doc, getDoc, runTransaction,
+    collection, query, orderBy, limit, getDocs, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyA9stOV8fyLiJwECjVfF5SqDdg_ppeu1Gw",
@@ -141,8 +186,10 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const counterRef = doc(db, "store", "counter");
+  const receiptsCol = collection(db, "receipts");
 
   let currentNum = null;
+  let historyCache = [];
 
   async function loadCounter() {
     try {
@@ -173,16 +220,20 @@
       +' — '+pad(h12)+':'+pad(now.getMinutes())+' '+ampm;
   }
 
-  function buildReceipt(num, copyLabelAr, copyLabelEn) {
-    const name    = document.getElementById('f-name').value.trim() || '—';
-    const phone   = document.getElementById('f-phone').value.trim() || '—';
-    const brand   = document.getElementById('f-brand').value.trim() || '—';
-    const model   = document.getElementById('f-model').value.trim() || '—';
-    const color   = document.getElementById('f-color').value.trim() || '—';
-    const imei    = document.getElementById('f-imei').value.trim();
-    const problem = document.getElementById('f-problem').value.trim() || '—';
-    const items   = document.getElementById('f-items').value.trim() || '—';
-    const dt      = getDateTime();
+  function getFormValues() {
+    return {
+      name:    document.getElementById('f-name').value.trim() || '—',
+      phone:   document.getElementById('f-phone').value.trim() || '—',
+      brand:   document.getElementById('f-brand').value.trim() || '—',
+      model:   document.getElementById('f-model').value.trim() || '—',
+      color:   document.getElementById('f-color').value.trim() || '—',
+      imei:    document.getElementById('f-imei').value.trim(),
+      problem: document.getElementById('f-problem').value.trim() || '—',
+      items:   document.getElementById('f-items').value.trim() || '—'
+    };
+  }
+
+  function buildReceipt(num, v, dt, copyLabelAr, copyLabelEn) {
     return `
       <div class="receipt">
         <div class="r-name">Shadi Najjar Store</div>
@@ -193,18 +244,18 @@
         <div class="r-date">${dt}</div>
         <hr class="r-dash">
         <div class="r-lbl">Customer</div>
-        <div class="r-val">${name}</div>
-        <div class="r-val-sm">${phone}</div>
+        <div class="r-val">${v.name}</div>
+        <div class="r-val-sm">${v.phone}</div>
         <hr class="r-dash">
         <div class="r-lbl">Device</div>
-        <div class="r-val">${brand} ${model}</div>
-        <div class="r-val-sm">${color}</div>
-        ${imei ? `<div class="r-val-sm" style="font-size:7.5pt;">IMEI/S/N: ${imei}</div>` : ''}
+        <div class="r-val">${v.brand} ${v.model}</div>
+        <div class="r-val-sm">${v.color}</div>
+        ${v.imei ? `<div class="r-val-sm" style="font-size:7.5pt;">IMEI/S/N: ${v.imei}</div>` : ''}
         <hr class="r-dash">
         <div class="r-lbl">Problem</div>
-        <div class="r-val-sm">${problem}</div>
+        <div class="r-val-sm">${v.problem}</div>
         <div class="r-lbl" style="margin-top:2mm;">Items received</div>
-        <div class="r-val-sm">${items}</div>
+        <div class="r-val-sm">${v.items}</div>
         <hr class="r-dash">
         <div class="r-arabic">
           ⚠ القطعة تتلف بعد شهر من تاريخ إخباركم.<br>
@@ -219,17 +270,28 @@
 
   // Prints the customer copy, then automatically prints the employee copy
   // right after — same 72mm paper, same printer. Tear off between each.
+  // Also saves the receipt to Firestore so it shows up in History.
   window.printBoth = async function() {
     const btn = document.getElementById('btn-receipt');
     btn.disabled = true;
     btn.textContent = 'Saving...';
+
+    const v  = getFormValues();
+    const dt = getDateTime();
 
     let newCounter;
     try {
       await runTransaction(db, async (transaction) => {
         const snap = await transaction.get(counterRef);
         newCounter = (snap.exists() ? snap.data().value : 0) + 1;
+        const numStr = String(newCounter).padStart(6, '0');
         transaction.set(counterRef, { value: newCounter });
+        transaction.set(doc(receiptsCol, numStr), {
+          number: numStr,
+          ...v,
+          date: dt,
+          createdAt: serverTimestamp()
+        });
       });
     } catch(e) {
       alert('Could not save — check your internet connection.');
@@ -246,7 +308,7 @@
 
     const printEmployeeCopy = function() {
       btn.textContent = 'Printing employee copy...';
-      document.getElementById('print-area').innerHTML = buildReceipt(currentNum, 'نسخة الموظف', 'Employee copy');
+      document.getElementById('print-area').innerHTML = buildReceipt(currentNum, v, dt, 'نسخة الموظف', 'Employee copy');
       setTimeout(() => window.print(), 300);
       window.addEventListener('afterprint', finish, { once: true });
     };
@@ -257,20 +319,60 @@
     };
 
     window.addEventListener('afterprint', printEmployeeCopy, { once: true });
-    document.getElementById('print-area').innerHTML = buildReceipt(currentNum, 'نسخة الزبون', 'Customer copy');
+    document.getElementById('print-area').innerHTML = buildReceipt(currentNum, v, dt, 'نسخة الزبون', 'Customer copy');
     setTimeout(() => window.print(), 300);
   };
 
-  window.resetCounter = async function() {
-    if (!confirm('Reset receipt counter back to 000001?')) return;
-    try {
-      await setDoc(counterRef, { value: 0 });
-      currentNum = null;
-      updateDisplay(1);
-      alert('Counter reset to 000001.');
-    } catch(e) {
-      alert('Could not reset — check your internet connection.');
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderHistory(list) {
+    const container = document.getElementById('history-list');
+    if (!list.length) {
+      container.innerHTML = '<div class="history-empty">No receipts yet.</div>';
+      return;
     }
+    container.innerHTML = list.map(r => `
+      <div class="history-row">
+        <div class="h-top"><span>#${escapeHtml(r.number || '')}</span><span>${escapeHtml(r.date || '')}</span></div>
+        <div class="h-meta">${escapeHtml(r.name || '—')} · ${escapeHtml(r.phone || '—')} · ${escapeHtml(r.brand || '')} ${escapeHtml(r.model || '')}</div>
+        <div class="h-problem">${escapeHtml(r.problem || '')}</div>
+      </div>
+    `).join('');
+  }
+
+  window.filterHistory = function() {
+    const q = document.getElementById('history-search-input').value.trim().toLowerCase();
+    if (!q) { renderHistory(historyCache); return; }
+    renderHistory(historyCache.filter(r =>
+      (r.number || '').toLowerCase().includes(q) ||
+      (r.name || '').toLowerCase().includes(q) ||
+      (r.phone || '').toLowerCase().includes(q)
+    ));
+  };
+
+  async function loadHistory() {
+    const container = document.getElementById('history-list');
+    container.innerHTML = '<div class="history-empty">Loading...</div>';
+    try {
+      const q = query(receiptsCol, orderBy('number', 'desc'), limit(200));
+      const snap = await getDocs(q);
+      historyCache = snap.docs.map(d => d.data());
+      renderHistory(historyCache);
+    } catch(e) {
+      container.innerHTML = '<div class="history-empty">Could not load history — check your internet connection.</div>';
+    }
+  }
+
+  window.openHistory = function() {
+    document.getElementById('history-overlay').classList.add('open');
+    document.getElementById('history-search-input').value = '';
+    loadHistory();
+  };
+
+  window.closeHistory = function() {
+    document.getElementById('history-overlay').classList.remove('open');
   };
 
   loadCounter();
